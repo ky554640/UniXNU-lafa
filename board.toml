@@ -1,0 +1,61 @@
+[board]
+name = "lafa"
+soc = "SM8850"
+description = "realme GT8 Pro (lafa) RMX5200: UniXNU bring-up"
+kit = "lafa"
+
+[kernel]
+defconfig = "lafa_defconfig"
+source_only = true
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "build-libpthread-kernel.py",
+  "build-arm-platform.py",
+]
+
+[payload]
+volume = "UNIXNULAF"
+size_mib = 180
+loader = "firmware"
+title = "realme GT8 Pro (lafa) UniXNU"
+dram_size = "0x20000000"
+timeout = 10
+kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "kt_fixed_zones=240", "rd=md0"]
+
+[payload.adt]
+tool = "scripts/make-lafa-adt.py"
+owned_memory_size = "0x10000000"
+cpu_regs = "0"
+
+[bootimg]
+embed_payload = true
+
+[firmware]
+config = "lafa"
+dsc = "Platforms/Realme/lafaPkg/lafa.dsc"
+fd = "Build/lafaPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+submodules = [
+  "Binaries",
+  "Common/Mu",
+  "Common/Mu_OEM_Sample",
+  "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl",
+]
+packages = [
+  "{uefi}",
+  "{uefi}/Platforms/Realme",
+  "{tree}/package",
+  "{tree}/drivers/DarwinBoot",
+  "{edk2}",
+  "{uefi}/Common/Mu",
+  "{uefi}/Common/Mu_OEM_Sample",
+  "{uefi}/Silicon/Qualcomm",
+  "{uefi}/Silicon/Silicium",
+]
+
+[firmware.defines]
+DEVICE_MODEL = "lafa"
+ENABLE_SECUREBOOT = "0"
+MEMORY_PROTECTION = "TRUE"
+SHIP_MODE = "FALSE"
+BUILDID_STRING = "lafa-unixnu-20261029"

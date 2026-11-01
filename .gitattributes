@@ -1,0 +1,4 @@
+# This tree is consumed on Linux and macOS only: check everything out with LF so
+# that patches/unixnu-source-kernel.patch still applies and the shell/python
+# entry points keep working. Git still detects the binary blobs on its own.
+* text=auto eol=lf
