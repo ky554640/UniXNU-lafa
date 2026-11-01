@@ -21,7 +21,11 @@ loader = "firmware"
 title = "realme GT8 Pro (lafa) UniXNU"
 dram_size = "0x20000000"
 timeout = 10
-kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1", "-enable_kprintf_spam", "kt_fixed_zones=240", "rd=md0"]
+# boot-progress=1 arms the on-screen diagnostic page and freezes it once no stage
+# or storage progress appears, so the bring-up state can be read off the panel
+# instead of scrolling away before the automatic reset.
+kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1", "-enable_kprintf_spam",
+               "kt_fixed_zones=240", "rd=md0", "boot-progress=1"]
 
 [payload.adt]
 tool = "scripts/make-lafa-adt.py"

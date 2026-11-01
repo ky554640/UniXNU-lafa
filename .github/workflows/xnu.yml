@@ -102,7 +102,10 @@ jobs:
           notes="Automated build of ${{ github.sha }} at ${{ github.event.repository.updated_at }}."
           gh release view ci-build >/dev/null 2>&1 ||
             gh release create ci-build --title "Latest CI build" --notes "$notes"
-          for f in out/lafa/payload/payload.img out/lafa/kernel/kernel.macho out/lafa/kernel/kernel.json; do
+          # The volume is 180 MiB of which ~91% is zero; the compressed copy is a few
+          # MiB, which is what makes the download side of the loop bearable.
+          gzip -9 -f -k out/lafa/payload/payload.img
+          for f in out/lafa/payload/payload.img.gz out/lafa/kernel/kernel.macho out/lafa/kernel/kernel.json; do
             if [ -f "$f" ]; then gh release upload ci-build "$f" --clobber; fi
           done
           gh release upload ci-build out/lafa/logs/actions-build.log --clobber || true
