@@ -1,6 +1,15 @@
 name: lafa SM8850 XNU (realme GT8 Pro)
 
 on:
+  # The kernel step needs macOS, so every push that can affect the build starts
+  # a run. Documentation-only commits are skipped to keep the macOS minutes.
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'references/**'
+      - 'proprietary-firmware/**'
   workflow_dispatch:
 
 permissions:
