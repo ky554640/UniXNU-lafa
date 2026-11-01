@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: lafa-xnu-${{ github.ref }}
@@ -90,3 +90,19 @@ jobs:
             device/out/lafa/unixnu.lock
           if-no-files-found: warn
           retention-days: 7
+
+      # Artifacts need an authenticated session, so a checkout that only holds an
+      # SSH key cannot fetch them. Release assets are public, which keeps the
+      # build -> repack -> boot loop closed without handing out a token.
+      - name: Publish the payload on the rolling ci-build release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Automated build of ${{ github.sha }} at ${{ github.event.repository.updated_at }}."
+          gh release view ci-build >/dev/null 2>&1 ||
+            gh release create ci-build --title "Latest CI build" --notes "$notes"
+          for f in out/lafa/payload/payload.img out/lafa/kernel/kernel.macho out/lafa/kernel/kernel.json; do
+            if [ -f "$f" ]; then gh release upload ci-build "$f" --clobber; fi
+          done
+          gh release upload ci-build out/lafa/logs/actions-build.log --clobber || true
