@@ -1,0 +1,169 @@
+diff --git a/BootShim/BootShim.S b/BootShim/BootShim.S
+index 5a41cc1..01ece65 100644
+--- a/BootShim/BootShim.S
++++ b/BootShim/BootShim.S
+@@ -2,12 +2,22 @@ _Head:
+   adr   x1, _Payload    /* Set _Entry address */
+   b     _Start          /* Jump to the real code */
+ 
++/* LOAD_BASE is where the boot loader places the combined image (the ARM64
++   text_offset). It is a large contiguous window (the board's "Kernel" region);
++   the embedded payload stays there, right after the firmware. FD_BASE is where
++   the firmware actually runs; BootShim copies the FD from the load window to it.
++   The two differ on purpose: the load window must be large enough for the whole
++   image, the run window must match the firmware's link address. */
++#ifndef LOAD_BASE
++#define LOAD_BASE 0xC7800000
++#endif
++
+ #if REQUIRES_KERNEL_HEADER == 1
+ _StackBase:
+-  .quad FD_BASE         /* Text Offset */
++  .quad LOAD_BASE        /* Text Offset: where the boot loader loads this image */
+ 
+ _StackSize:
+-  .quad FD_SIZE + (_Payload - _Head) /* Complete shim and payload */
++  .quad FD_SIZE + (_Payload - _Head) + EMBEDDED_PAYLOAD_SIZE /* shim + firmware + embedded payload */
+   .quad 0               /* Flags */
+   .quad 0               /* Reserved */
+   .quad 0               /* Reserved */
+@@ -30,6 +40,14 @@ _CopyLoop:
+   b.ne  _CopyLoop
+   ldr   x5, =FD_BASE
+ 
++#if EMBEDDED_PAYLOAD_SIZE > 0
++  /* The payload follows the firmware in the combined image: after the copy loop
++     x4 points right past the firmware, which is the payload's address. It stays
++     in the load window (LOAD_BASE), clear of the SEC and DXE heaps. Hand that
++     address to SEC; no copy is needed. */
++  mov   x11, x4
++#endif
++
+ _Entry:
+   /* Publish the copied instructions before executing them. */
+   dsb   sy
+@@ -51,6 +69,14 @@ _CleanLoop:
+   ic    iallu
+   dsb   sy
+   isb
++
++#if EMBEDDED_PAYLOAD_SIZE > 0
++  /* Pass the embedded payload to SEC: x1 = its physical address, x2 = its
++     size. x0 (the DT address from the boot loader) is left untouched. */
++  mov   x1, x11
++  ldr   x2, =EMBEDDED_PAYLOAD_SIZE
++#endif
++
+   br    x5
+ 
+ _Dead:
+diff --git a/Silicon/Silicium/SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S b/Silicon/Silicium/SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S
+index c337bcf..56d42de 100644
+--- a/Silicon/Silicium/SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S
++++ b/Silicon/Silicium/SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S
+@@ -21,13 +21,25 @@ ASM_FUNC (_ModuleEntryPoint)
+ 
+   // Before the first store of this stage: clean and invalidate the data caches the previous stage filled (x0 is kept in x20).
+   mov   x20, x0
++  mov   x21, x1
++  mov   x22, x2
+   bl    ASM_PFX (SecCleanInvalidateDataCacheAll)
+   mov   x0, x20
++  mov   x1, x21
++  mov   x2, x22
+ 
+   // Keep x0 for the platform. It is the address of the DT a Linux-style boot
+   // loader hands over. The slot is in this section, which is in RAM here.
+-  adr   x1, ASM_PFX (gSecEntryArg0)
+-  str   x0, [x1]
++  adr   x3, ASM_PFX (gSecEntryArg0)
++  str   x0, [x3]
++
++  // Keep the embedded payload address (x1) and size (x2) that BootShim left in
++  // the registers. When no payload is embedded they stay zero and the HOB is
++  // not published.
++  adr   x3, ASM_PFX (gSecPayloadBase)
++  str   x1, [x3]
++  adr   x3, ASM_PFX (gSecPayloadSize)
++  str   x2, [x3]
+ 
+   // Do Platform Specific Initialization
+   bl    ASM_PFX (PlatformAssemblyInitialize)
+@@ -83,3 +95,14 @@ ASM_PFX (MainEntryPoint):
+   .global ASM_PFX (gSecEntryArg0)
+ ASM_PFX (gSecEntryArg0):
+   .quad 0
++
++  // Embedded payload base (x1) and size (x2) from BootShim; zero when absent
++  .align 3
++  .global ASM_PFX (gSecPayloadBase)
++ASM_PFX (gSecPayloadBase):
++  .quad 0
++
++  .align 3
++  .global ASM_PFX (gSecPayloadSize)
++ASM_PFX (gSecPayloadSize):
++  .quad 0
+diff --git a/Silicon/Silicium/SiliciumPkg/Sec/Sec.c b/Silicon/Silicium/SiliciumPkg/Sec/Sec.c
+index 1b75d59..ad72f78 100644
+--- a/Silicon/Silicium/SiliciumPkg/Sec/Sec.c
++++ b/Silicon/Silicium/SiliciumPkg/Sec/Sec.c
+@@ -21,6 +21,10 @@
+ // First argument (x0) of the previous stage, saved by ModuleEntryPoint.S
+ extern UINT64  gSecEntryArg0;
+ 
++// Embedded payload address (x1) and size (x2) left by BootShim, or zero.
++extern UINT64  gSecPayloadBase;
++extern UINT64  gSecPayloadSize;
++
+ // The library constructors ProcessLibraryConstructorList () runs for this module, in its generated order, called one by one so the screen
+ // shows which one a stall is in (an entry here that the generated list lacks fails to link, which is the check).
+ // Helper.S: clean and invalidate every data cache level by set/way (see there).
+@@ -177,6 +181,19 @@ SecMain (VOID)
+     BuildGuidDataHob (&gSiliciumEntryArgHobGuid, &EntryArg, sizeof (EntryArg));
+   }
+ 
++  // Publish the embedded payload that BootShim placed right after the firmware
++  // volume, if any. The board RAM-disk driver consumes this HOB and exposes the
++  // payload FAT volume as a block device.
++  if ((gSecPayloadBase != 0) && (gSecPayloadSize != 0)) {
++    struct {
++      UINT64  Base;
++      UINT64  Size;
++    } Payload = { gSecPayloadBase, gSecPayloadSize };
++
++    BuildGuidDataHob (&gSiliciumPayloadHobGuid, &Payload, sizeof (Payload));
++    DEBUG ((EFI_D_WARN, "SEC: embedded payload 0x%lx size 0x%lx\n", Payload.Base, Payload.Size));
++  }
++
+   CheckHobList ();
+ 
+   // Run Library Cconstructors
+diff --git a/Silicon/Silicium/SiliciumPkg/Sec/Sec.inf b/Silicon/Silicium/SiliciumPkg/Sec/Sec.inf
+index 3a0a8a9..3a4086b 100644
+--- a/Silicon/Silicium/SiliciumPkg/Sec/Sec.inf
++++ b/Silicon/Silicium/SiliciumPkg/Sec/Sec.inf
+@@ -53,6 +53,7 @@
+ [Guids]
+   gArmMpCoreInfoGuid
+   gSiliciumEntryArgHobGuid
++  gSiliciumPayloadHobGuid
+ 
+ [Pcd]
+   gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString
+diff --git a/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dec b/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dec
+index 6f9dcde..2f3397f 100644
+--- a/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dec
++++ b/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dec
+@@ -14,6 +14,11 @@
+   # A Linux-style boot loader passes the physical address of a flattened DT.
+   gSiliciumEntryArgHobGuid            = { 0xDAEE82E6, 0x8090, 0x4E72, { 0xBF, 0xB9, 0x78, 0xC1, 0x3C, 0xD4, 0xE3, 0x59 } }
+ 
++  # HOB holding the embedded payload (address and size) that BootShim placed
++  # right after the firmware volume. The board's RAM-disk driver reads it and
++  # publishes the payload FAT volume as a block device.
++  gSiliciumPayloadHobGuid             = { 0x3E10BF20, 0x8C11, 0x4F6D, { 0xA2, 0x73, 0x1B, 0x94, 0x0E, 0xD6, 0x52, 0x3B } }
++
+ [Protocols]
+   gKeypadDeviceProtocolGuid           = { 0xA412C1AC, 0x0295, 0x4AE3, { 0xB5, 0x9F, 0x52, 0x23, 0x1F, 0x26, 0x55, 0x4D } }
+ 

@@ -21,11 +21,16 @@ loader = "firmware"
 title = "realme GT8 Pro (lafa) UniXNU"
 dram_size = "0x20000000"
 timeout = 10
-# boot-progress=1 arms the on-screen diagnostic page and freezes it once no stage
-# or storage progress appears, so the bring-up state can be read off the panel
-# instead of scrolling away before the automatic reset.
-kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1", "-enable_kprintf_spam",
-               "kt_fixed_zones=240", "rd=md0", "boot-progress=1"]
+# boot-progress is deliberately off for the log run: level 1 owns the panel and
+# repaints it, which would overwrite the console text that says where the boot
+# stopped. The console mirror added to UniXNULog needs that text to stay put.
+kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1",
+               "kt_fixed_zones=240", "rd=md0",
+               # native-ufs-probe=2 runs inspect(): read-only report of the SM8850 UFS
+               # controller state (0x1d84000). probe=1 does nothing in this driver, so
+               # use 2. It maps the HC read-only and reports whether the GCC leaves the
+               # controller powered and its status registers readable.
+               "native-ufs-probe=2"]
 
 [payload.adt]
 tool = "scripts/make-lafa-adt.py"
@@ -34,6 +39,11 @@ cpu_regs = "0"
 
 [bootimg]
 embed_payload = true
+# Where the boot loader places the combined image (the ARM64 text_offset). This
+# is the board's reserved "Kernel" region: a large contiguous window big enough
+# for shim + firmware + payload, so the embedded payload stays here instead of
+# clobbering the SEC/DXE heaps that live right after the firmware's run address.
+load_base = "0xC7800000"
 
 [firmware]
 config = "lafa"
