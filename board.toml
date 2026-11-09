@@ -26,11 +26,12 @@ timeout = 10
 # stopped. The console mirror added to UniXNULog needs that text to stay put.
 kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1",
                "kt_fixed_zones=240", "rd=md0",
-               # native-ufs-probe=2 runs inspect(): read-only report of the SM8850 UFS
-               # controller state (0x1d84000). probe=1 does nothing in this driver, so
-               # use 2. It maps the HC read-only and reports whether the GCC leaves the
-               # controller powered and its status registers readable.
-               "native-ufs-probe=2"]
+               # native-ufs-probe=15 runs powerOnUfs(): power the UFS PHY GDSC and
+               # clock branches back up, enable HCE, and report each register
+               # transition. Read-only with respect to the storage. This is the
+               # step toward native-ufs-root; the stock ABL leaves the controller
+               # collapsed (probe=2 inspect confirmed GDSCR bit31=0, HCE=0).
+               "native-ufs-probe=15"]
 
 [payload.adt]
 tool = "scripts/make-lafa-adt.py"

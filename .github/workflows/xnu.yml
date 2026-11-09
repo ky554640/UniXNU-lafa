@@ -67,6 +67,16 @@ jobs:
           ./unixnu fetch xnu libplatform libdispatch AvailabilityVersions libpthread corecrypto-2023 IOStorageFamily 2>&1 | tee out/lafa/logs/actions-fetch.log
           cp unixnu.lock out/lafa/unixnu.lock
 
+      - name: Apply the board's native-driver patches
+        run: |
+          # Power the UFS controller back up (native-ufs-probe=15): the stock
+          # ABL leaves it collapsed and NativeUfs has no power-on code, so
+          # without this the kernel can never read partitions.
+          python3 wsl_install/patch-native-ufs-poweron.py \
+            "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp" --check || \
+          python3 wsl_install/patch-native-ufs-poweron.py \
+            "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp"
+
       - name: Build XNU and the FAT payload
         env:
           GITHUB_TOKEN: ${{ github.token }}
