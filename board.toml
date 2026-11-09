@@ -26,12 +26,11 @@ timeout = 10
 # stopped. The console mirror added to UniXNULog needs that text to stay put.
 kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1",
                "kt_fixed_zones=240", "rd=md0",
-               # native-ufs-probe=15 runs powerOnUfs(): power the UFS PHY GDSC and
-               # clock branches back up, enable HCE, and report each register
-               # transition. Read-only with respect to the storage. This is the
-               # step toward native-ufs-root; the stock ABL leaves the controller
-               # collapsed (probe=2 inspect confirmed GDSCR bit31=0, HCE=0).
-               "native-ufs-probe=15"]
+               # native-ufs-probe=2 now powers the UFS PHY GDSC and clock branches
+               # back up (powerOnUfs) before inspect(), and reports each register
+               # transition. probe=2 is the path confirmed to fire on hardware
+               # (probe=15 did not). Read-only with respect to the storage.
+               "native-ufs-probe=2"]
 
 [payload.adt]
 tool = "scripts/make-lafa-adt.py"

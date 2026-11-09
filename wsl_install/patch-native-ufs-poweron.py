@@ -110,6 +110,12 @@ PROBE_15_FN = r'''
   }
 '''
 
+# Also run powerOnUfs from the probe == 2 path, which is the one confirmed to
+# fire on hardware (probe == 15 did not). The call is placed before inspect() so
+# the power-on result, not the pre-power state, is what gets reported.
+PROBE_2_CALL = "powerOnUfs ();\n"
+ANCHOR_PROBE_2_INSPECT = "  if (probe == 2) {\n    inspect ();\n  }"
+
 ANCHOR_FN_END = "}\n\n// Adopt the controller the firmware left running (native-ufs-probe=3) and issue"
 ANCHOR_PROBE_13 = "  if (probe == 13) {"
 
@@ -141,6 +147,20 @@ def patch(path: Path, check_only: bool) -> bool:
         text = text.replace(ANCHOR_PROBE_13, PROBE_15_FN + "\n" + ANCHOR_PROBE_13, 1)
         changed = True
         print("probe == 15: inserted")
+
+    # Run powerOnUfs from probe == 2 too, before inspect(). The anchor is the
+    # existing probe == 2 block; replace it with a version that powers on first.
+    PROBE_2_NEW = "  if (probe == 2) {\n    powerOnUfs ();\n    inspect ();\n  }"
+    if "    powerOnUfs ();\n    inspect ();" not in text:
+        if check_only:
+            print("probe == 2 powerOnUfs: not applied")
+            return False
+        if ANCHOR_PROBE_2_INSPECT not in text:
+            print("anchor (probe == 2 inspect) not found")
+            return False
+        text = text.replace(ANCHOR_PROBE_2_INSPECT, PROBE_2_NEW, 1)
+        changed = True
+        print("probe == 2 powerOnUfs: inserted")
 
     if changed and not check_only:
         path.write_text(text)
