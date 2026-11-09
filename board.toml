@@ -25,12 +25,13 @@ timeout = 10
 # repaints it, which would overwrite the console text that says where the boot
 # stopped. The console mirror added to UniXNULog needs that text to stay put.
 kernel_args = ["-v", "serial=0", "debug=0x14e", "cpus=1",
-               "kt_fixed_zones=240", "rd=md0",
-               # native-ufs-probe=2 now powers the UFS PHY GDSC and clock branches
-               # back up (powerOnUfs) before inspect(), and reports each register
-               # transition. probe=2 is the path confirmed to fire on hardware
-               # (probe=15 did not). Read-only with respect to the storage.
-               "native-ufs-probe=2"]
+               "kt_fixed_zones=240",
+               # native-ufs-root=1 drives startRoot() -> hostBringUp(), which now
+               # powers the controller on (powerOnUfsController) before takeover,
+               # then reads the userdata GPT and publishes IOMedia. Read-only.
+               # rd=md0 is dropped: it made bsd_init's IOFindBSDRoot panic on the
+               # absent RAM disk before NativeUfs' root-device start() could run.
+               "native-ufs-root=1"]
 
 [payload.adt]
 tool = "scripts/make-lafa-adt.py"
