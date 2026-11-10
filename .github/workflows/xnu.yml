@@ -130,3 +130,23 @@ jobs:
             if [ -f "$f" ]; then gh release upload ci-build "$f" --clobber; fi
           done
           gh release upload ci-build out/lafa/logs/actions-build.log --clobber || true
+
+      # The release CDN (objects.githubusercontent.com) is unreachable from some
+      # networks, so also mirror the compressed payload onto an orphan `artifacts`
+      # branch that can be fetched over the SSH git transport instead.
+      - name: Mirror the payload to the artifacts branch
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          mkdir -p /tmp/artifacts && cd /tmp/artifacts
+          git init -q
+          git checkout -q --orphan artifacts 2>/dev/null || true
+          cp -f "$GITHUB_WORKSPACE/device/out/lafa/payload/payload.img.gz" payload.img.gz
+          cp -f "$GITHUB_WORKSPACE/device/out/lafa/kernel/kernel.macho" kernel.macho
+          git add -f payload.img.gz kernel.macho
+          git commit -q -m "artifacts: ${{ github.sha }}" || true
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" artifacts:artifacts
