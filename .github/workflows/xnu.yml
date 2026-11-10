@@ -72,7 +72,9 @@ jobs:
           # Power the UFS controller back up (the stock ABL leaves it collapsed
           # and NativeUfs has no power-on code, so without this the kernel can
           # never read partitions), then widen the SMMU window from sheng's
-          # SM8550 size (0xd0000) to SM8850's 1 MiB window.
+          # SM8550 size (0xd0000) to SM8850's 1 MiB window, then exit the UniPro
+          # link's HIBERN8 state (the SM8850 bootloader hands over with the link
+          # asleep, so the first NOP OUT otherwise times out).
           python3 wsl_install/patch-native-ufs-poweron.py \
             "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp" --check || \
           python3 wsl_install/patch-native-ufs-poweron.py \
@@ -81,6 +83,10 @@ jobs:
             "$UNIXNU_TREE/drivers/NativeUfs" --check || \
           python3 wsl_install/patch-native-ufs-smmu-window.py \
             "$UNIXNU_TREE/drivers/NativeUfs"
+          python3 wsl_install/patch-native-ufs-hibern8-exit.py \
+            "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp" --check || \
+          python3 wsl_install/patch-native-ufs-hibern8-exit.py \
+            "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp"
 
       - name: Build XNU and the FAT payload
         env:
