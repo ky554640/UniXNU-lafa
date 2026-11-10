@@ -69,13 +69,18 @@ jobs:
 
       - name: Apply the board's native-driver patches
         run: |
-          # Power the UFS controller back up (native-ufs-probe=15): the stock
-          # ABL leaves it collapsed and NativeUfs has no power-on code, so
-          # without this the kernel can never read partitions.
+          # Power the UFS controller back up (the stock ABL leaves it collapsed
+          # and NativeUfs has no power-on code, so without this the kernel can
+          # never read partitions), then widen the SMMU window from sheng's
+          # SM8550 size (0xd0000) to SM8850's 1 MiB window.
           python3 wsl_install/patch-native-ufs-poweron.py \
             "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp" --check || \
           python3 wsl_install/patch-native-ufs-poweron.py \
             "$UNIXNU_TREE/drivers/NativeUfs/NativeUfs.cpp"
+          python3 wsl_install/patch-native-ufs-smmu-window.py \
+            "$UNIXNU_TREE/drivers/NativeUfs" --check || \
+          python3 wsl_install/patch-native-ufs-smmu-window.py \
+            "$UNIXNU_TREE/drivers/NativeUfs"
 
       - name: Build XNU and the FAT payload
         env:
